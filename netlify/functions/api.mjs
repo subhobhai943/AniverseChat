@@ -25,8 +25,9 @@ app.use((req, res, next) => {
   }
 });
 
-// In-memory storage for conversations (per function instance)
-const conversations = new Map();
+// In-memory storage (per function instance)
+const sessions = new Map();      // sessionId -> session object
+const conversations = new Map(); // sessionId -> messages array
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -34,7 +35,8 @@ app.get('/api/health', (req, res) => {
     status: 'ok', 
     timestamp: new Date().toISOString(),
     hasPerplexityKey: !!PERPLEXITY_API_KEY,
-    mode: 'serverless-netlify'
+    mode: 'serverless-netlify',
+    activeSessions: sessions.size
   });
 });
 
@@ -53,15 +55,17 @@ app.get('/api/auth/user', (req, res) => {
 app.post("/api/chat/sessions", async (req, res) => {
   try {
     const id = crypto.randomUUID();
+    const now = new Date().toISOString();
     const session = {
       id,
       title: req.body.title || "New Chat",
       userId: "default-user",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: now,
+      updatedAt: now
     };
     
-    // Initialize empty conversation
+    // Store session and initialize empty conversation
+    sessions.set(id, session);
     conversations.set(id, []);
     
     console.log(`[NETLIFY] Created session: ${id}`);
@@ -75,7 +79,12 @@ app.post("/api/chat/sessions", async (req, res) => {
 // Get all sessions
 app.get("/api/chat/sessions", async (req, res) => {
   try {
-    res.json([]);
+    // Return all stored sessions, sorted by updatedAt (newest first)
+    const allSessions = Array.from(sessions.values())
+      .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+    
+    console.log(`[NETLIFY] Returning ${allSessions.length} sessions`);
+    res.json(allSessions);
   } catch (error) {
     console.error("[NETLIFY] Error fetching sessions:", error);
     res.status(500).json({ error: "Failed to fetch chat sessions" });
@@ -87,6 +96,11 @@ app.get("/api/chat/sessions/:sessionId/messages", async (req, res) => {
   try {
     const { sessionId } = req.params;
     console.log(`[NETLIFY] Fetching messages for session: ${sessionId}`);
+    
+    // Check if session exists
+    if (!sessions.has(sessionId)) {
+      return res.status(404).json({ error: "Session not found" });
+    }
     
     let sessionMessages = conversations.get(sessionId);
     
@@ -118,6 +132,11 @@ app.post("/api/chat/sessions/:sessionId/messages", async (req, res) => {
 
     if (!content) {
       return res.status(400).json({ error: "Message content is required" });
+    }
+
+    // Check if session exists
+    if (!sessions.has(sessionId)) {
+      return res.status(404).json({ error: "Session not found" });
     }
 
     console.log(`[NETLIFY] Processing message for session ${sessionId}`);
@@ -231,6 +250,13 @@ app.post("/api/chat/sessions/:sessionId/messages", async (req, res) => {
     
     // Store updated conversation
     conversations.set(sessionId, sessionMessages);
+    
+    // Update session timestamp
+    const session = sessions.get(sessionId);
+    if (session) {
+      session.updatedAt = new Date().toISOString();
+      sessions.set(sessionId, session);
+    }
 
     res.json({
       message: aiResponse,
@@ -250,7 +276,16 @@ app.post("/api/chat/sessions/:sessionId/messages", async (req, res) => {
 app.delete("/api/chat/sessions/:sessionId", async (req, res) => {
   try {
     const { sessionId } = req.params;
+    
+    // Check if session exists
+    if (!sessions.has(sessionId)) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+    
+    // Delete session and its messages
+    sessions.delete(sessionId);
     conversations.delete(sessionId);
+    
     console.log(`[NETLIFY] Deleted session: ${sessionId}`);
     res.status(200).json({ message: "Session deleted successfully" });
   } catch (error) {
