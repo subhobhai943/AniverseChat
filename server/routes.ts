@@ -179,12 +179,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         if (!perplexityResponse.ok) {
           const errorText = await perplexityResponse.text();
-          console.error(`[CHAT] Perplexity API error ${perplexityResponse.status}:`, errorText);
+          const status = perplexityResponse.status;
+          console.error(`[CHAT] Perplexity API error ${status}:`, errorText);
+          
+          let errorContent = "Sorry, I'm having trouble accessing my knowledge base right now. Please try again in a moment.";
+          
+          if (status === 401) {
+            errorContent = "🔑 API Authentication Error\n\nYour Perplexity API key has no credits remaining. To fix this:\n\n1. Go to https://sonar.perplexity.ai/\n2. Check your credit balance\n3. Purchase more credits or add a payment method\n4. Pro users get $5 free credits monthly\n\nNote: API keys only work with a non-zero balance.";
+          } else if (status === 429) {
+            errorContent = "Sorry, I'm receiving too many requests right now. Please try again in a moment.";
+          } else if (status === 400) {
+            errorContent = "Sorry, there was an issue with the request format. The API model or parameters may have changed.";
+          }
           
           const errorMessage = await storage.createMessage({
             sessionId,
             role: "assistant",
-            content: "Sorry, I'm having trouble accessing my knowledge base right now. Please try again in a moment.",
+            content: errorContent,
           });
           
           return res.json({

@@ -12,9 +12,19 @@ import { chatApi } from "@/lib/chat-api";
 import backgroundImage from "@assets/artworks-000496368060-wd4wu9-t500x500_1756026201497.jpg";
 
 function Router() {
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(() => {
+    // Try to restore session from localStorage
+    return localStorage.getItem('currentSessionId');
+  });
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+
+  // Save sessionId to localStorage whenever it changes
+  useEffect(() => {
+    if (currentSessionId) {
+      localStorage.setItem('currentSessionId', currentSessionId);
+    }
+  }, [currentSessionId]);
 
   useEffect(() => {
     // Create a new session when the app loads
@@ -32,6 +42,17 @@ function Router() {
     }
   }, [currentSessionId]);
 
+  // Handler to create a new session (for recovery)
+  const handleCreateNewSession = async () => {
+    try {
+      const session = await chatApi.createSession();
+      setCurrentSessionId(session.id);
+      localStorage.setItem('currentSessionId', session.id);
+    } catch (error) {
+      console.error("Failed to create recovery session:", error);
+    }
+  };
+
   return (
     <Switch>
         <Route path="/">
@@ -48,7 +69,10 @@ function Router() {
             />
             
             {currentSessionId ? (
-              <ChatInterface sessionId={currentSessionId} />
+              <ChatInterface 
+                sessionId={currentSessionId} 
+                onSessionNotFound={handleCreateNewSession}
+              />
             ) : (
               <div className="flex items-center justify-center h-screen">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-anime-orange"></div>

@@ -13,9 +13,10 @@ import animeAvatar from "@assets/a3922c432494e8836b1e11e9722c7115_1755968455298.
 
 interface ChatInterfaceProps {
   sessionId: string;
+  onSessionNotFound?: () => void;
 }
 
-export function ChatInterface({ sessionId }: ChatInterfaceProps) {
+export function ChatInterface({ sessionId, onSessionNotFound }: ChatInterfaceProps) {
   const [inputValue, setInputValue] = useState("");
   const [showScrollButton, setShowScrollButton] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -24,9 +25,23 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
   // Fetch messages
   const { data: messages = [], isLoading, error } = useQuery({
     queryKey: ["/api/chat/sessions", sessionId, "messages"],
-    queryFn: () => chatApi.getMessages(sessionId),
+    queryFn: async () => {
+      try {
+        return await chatApi.getMessages(sessionId);
+      } catch (err: any) {
+        // If session not found (404), trigger recovery
+        if (err.message?.includes('404') || err.message?.includes('Session not found')) {
+          console.log('Session not found, triggering recovery...');
+          if (onSessionNotFound) {
+            onSessionNotFound();
+          }
+          return [];
+        }
+        throw err;
+      }
+    },
     enabled: !!sessionId,
-    retry: 2,
+    retry: 1,
     staleTime: 5000,
   });
 

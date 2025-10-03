@@ -218,9 +218,11 @@ app.post("/api/chat/sessions/:sessionId/messages", async (req, res) => {
           console.error(`[NETLIFY] Perplexity API error ${status}:`, errorText);
           
           if (status === 401) {
-            aiResponse = "Sorry, there's an authentication issue with the AI service. Please check your API key configuration.";
+            aiResponse = "🔑 API Authentication Error\n\nYour Perplexity API key has no credits remaining. To fix this:\n\n1. Go to https://sonar.perplexity.ai/\n2. Check your credit balance\n3. Purchase more credits or add a payment method\n4. Pro users get $5 free credits monthly\n\nNote: API keys only work with a non-zero balance.";
           } else if (status === 429) {
             aiResponse = "Sorry, I'm receiving too many requests right now. Please try again in a moment.";
+          } else if (status === 400) {
+            aiResponse = "Sorry, there was an issue with the request format. The API model or parameters may have changed.";
           } else {
             aiResponse = "Sorry, I'm having trouble accessing my knowledge base right now. Please try again in a moment.";
           }
