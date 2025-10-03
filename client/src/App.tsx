@@ -8,13 +8,10 @@ import { Header } from "@/components/Header";
 import { ChatInterface } from "@/components/chat/chat-interface";
 import { ChatHistory } from "@/components/chat/chat-history";
 import { ChatSettings } from "@/components/chat/chat-settings";
-import { Landing } from "@/components/Landing";
-import { useAuth } from "@/hooks/useAuth";
 import { chatApi } from "@/lib/chat-api";
 import backgroundImage from "@assets/artworks-000496368060-wd4wu9-t500x500_1756026201497.jpg";
 
 function Router() {
-  // Always authenticated now - no login required
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
