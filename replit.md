@@ -25,14 +25,16 @@ Preferred communication style: Simple, everyday language.
 - **API Design**: RESTful endpoints for chat session management and message handling
 
 ### Data Storage Solutions
-- **Primary Storage**: In-memory storage using custom MemStorage class implementing IStorage interface
-- **Database Schema**: Drizzle ORM with PostgreSQL schema definitions for potential database migration
-- **Session Management**: UUID-based session and message identification
-- **Data Models**: Structured chat sessions and messages with timestamps and role-based messaging
+- **Primary Storage**: PostgreSQL database using Drizzle ORM
+- **Database Provider**: Replit PostgreSQL (Neon-backed serverless database)
+- **Session Management**: UUID-based session and message identification with express-session
+- **Data Models**: Structured chat sessions, messages, and users with timestamps and role-based messaging
+- **Schema Management**: Database schema pushed and ready using `npm run db:push`
 
 ### Authentication and Authorization
-- **Current State**: No authentication system implemented
-- **Session Handling**: Simple session-based chat management without user authentication
+- **Current State**: Replit Auth integration for user authentication
+- **Session Handling**: Express session middleware with PostgreSQL session store
+- **User Management**: Automatic user creation on first access with unique session identifiers
 
 ### UI/UX Design Patterns
 - **Theme**: Dark mode with anime-inspired color palette (orange/red gradients)
@@ -55,8 +57,9 @@ Preferred communication style: Simple, everyday language.
 
 ### Database and ORM
 - **Drizzle ORM**: Type-safe database toolkit for PostgreSQL schema management
-- **Neon Database**: Serverless PostgreSQL database provider integration
-- **Migration System**: Database schema versioning and migration support
+- **Replit PostgreSQL**: Serverless PostgreSQL database (Neon-backed) provisioned and configured
+- **Migration System**: Database schema versioning using `npm run db:push` command
+- **Environment Variables**: DATABASE_URL, PGPORT, PGUSER, PGPASSWORD, PGDATABASE, PGHOST configured
 
 ### UI and Styling
 - **Radix UI**: Comprehensive accessible component primitives for complex UI elements
@@ -83,3 +86,57 @@ Preferred communication style: Simple, everyday language.
 - **Date-fns**: Date manipulation and formatting utilities
 - **Class Variance Authority**: Utility for creating variant-based component APIs
 - **CLSX**: Conditional className utility for dynamic styling
+
+## Replit Environment Setup
+
+### Current Status (Last Updated: October 3, 2025)
+The application has been successfully configured to run in the Replit environment.
+
+### Environment Configuration
+- **Node.js**: Version 20 installed and configured
+- **Package Manager**: npm (all dependencies installed)
+- **Port Configuration**: Application serves on port 5000 (both frontend and backend)
+- **Host Configuration**: 0.0.0.0 binding for Replit proxy compatibility
+- **Vite Configuration**: Already configured with `allowedHosts: true` for Replit iframe proxy
+
+### Database Setup
+- **Database**: PostgreSQL database provisioned via Replit
+- **Schema Status**: Database schema successfully pushed using `npm run db:push`
+- **Tables Created**: users, sessions, chat_sessions, messages
+- **Environment Variables**: All database connection variables configured (DATABASE_URL, PGPORT, PGUSER, PGPASSWORD, PGDATABASE, PGHOST)
+
+### Integrations Installed
+- **Replit Auth**: JavaScript login integration for user authentication
+- **Perplexity API**: Blueprint for AI chat functionality (requires PERPLEXITY_API_KEY environment variable)
+- **PostgreSQL Database**: Replit database integration
+
+### Workflow Configuration
+- **Workflow Name**: "Start application"
+- **Command**: `npm run dev`
+- **Output Type**: webview
+- **Port**: 5000
+- **Status**: Running successfully
+
+### Required Environment Variables
+To use the chat functionality, you need to set:
+- **PERPLEXITY_API_KEY**: Your Perplexity API key for AI responses
+
+### How to Run the Project
+1. The application automatically starts via the "Start application" workflow
+2. Access the application through the webview preview
+3. The server serves both frontend (Vite) and backend (Express) on port 5000
+4. Hot module replacement is enabled for development
+
+### Build and Deployment
+- **Development**: `npm run dev` (currently running)
+- **Build**: `npm run build` (builds both frontend with Vite and backend with esbuild)
+- **Production**: `npm run start` (runs the built application)
+- **Database Migration**: `npm run db:push` (pushes schema changes to database)
+
+### Recent Changes (October 3, 2025)
+- Installed all npm dependencies
+- Configured workflow for port 5000 with webview output
+- Created PostgreSQL database
+- Pushed database schema successfully
+- Verified application running correctly with anime-themed UI
+- Updated backend storage from in-memory to PostgreSQL database storage
