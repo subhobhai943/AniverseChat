@@ -1,8 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertChatSessionSchema, insertMessageSchema, chatMessageSchema, type ChatResponse } from "@shared/schema";
-import { setupSession, getSessionUserId } from "./replitAuth";
+import { chatMessageSchema, type ChatResponse } from "@shared/schema";
 
 interface PerplexityMessage {
   role: "system" | "user" | "assistant";
@@ -17,29 +16,33 @@ interface PerplexityResponse {
   }>;
 }
 
+const DEFAULT_USER_ID = "default-user";
+
 export async function registerRoutes(app: Express): Promise<Server> {
   const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY;
 
-  // Session middleware
-  setupSession(app);
+  // Ensure default user exists
+  const ensureDefaultUser = async () => {
+    let user = await storage.getUser(DEFAULT_USER_ID);
+    if (!user) {
+      user = await storage.upsertUser({
+        id: DEFAULT_USER_ID,
+        email: 'user@aniverse.ai',
+        firstName: 'AniVerse',
+        lastName: 'User',
+        profileImageUrl: '',
+      });
+    }
+    return user;
+  };
 
-  // User routes
-  app.get('/api/auth/user', async (req: any, res) => {
+  // Initialize default user
+  ensureDefaultUser().catch(console.error);
+
+  // User route - returns default user (no auth)
+  app.get('/api/auth/user', async (req, res) => {
     try {
-      const userId = getSessionUserId(req);
-      let user = await storage.getUser(userId);
-      
-      // Create user if doesn't exist
-      if (!user) {
-        user = await storage.upsertUser({
-          id: userId,
-          email: `user_${userId.slice(0, 8)}@aniverse.ai`,
-          firstName: 'AniVerse',
-          lastName: 'User',
-          profileImageUrl: '',
-        });
-      }
-      
+      const user = await ensureDefaultUser();
       res.json(user);
     } catch (error) {
       console.error("Error fetching user:", error);
@@ -48,15 +51,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create a new chat session
-  app.post("/api/chat/sessions", async (req: any, res) => {
+  app.post("/api/chat/sessions", async (req, res) => {
     try {
-      const userId = getSessionUserId(req);
-      
-      await ensureUserExists(userId);
+      await ensureDefaultUser();
       
       const sessionData = { 
         title: req.body.title || "New Chat",
-        userId 
+        userId: DEFAULT_USER_ID
       };
       const session = await storage.createChatSession(sessionData);
       res.status(200).json(session);
@@ -66,27 +67,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Helper function to ensure user exists
-  const ensureUserExists = async (userId: string) => {
-    let user = await storage.getUser(userId);
-    if (!user) {
-      user = await storage.upsertUser({
-        id: userId,
-        email: `user_${userId.slice(0, 8)}@aniverse.ai`,
-        firstName: 'AniVerse',
-        lastName: 'User',
-        profileImageUrl: '',
-      });
-    }
-    return user;
-  };
-
-  // Get all chat sessions for user
-  app.get("/api/chat/sessions", async (req: any, res) => {
+  // Get all chat sessions
+  app.get("/api/chat/sessions", async (req, res) => {
     try {
-      const userId = getSessionUserId(req);
-      await ensureUserExists(userId);
-      const sessions = await storage.getAllChatSessions(userId);
+      await ensureDefaultUser();
+      const sessions = await storage.getAllChatSessions(DEFAULT_USER_ID);
       res.json(sessions);
     } catch (error) {
       console.error("Error fetching chat sessions:", error);
@@ -95,13 +80,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get messages for a session
-  app.get("/api/chat/sessions/:sessionId/messages", async (req: any, res) => {
+  app.get("/api/chat/sessions/:sessionId/messages", async (req, res) => {
     try {
       const { sessionId } = req.params;
-      const userId = getSessionUserId(req);
-      await ensureUserExists(userId);
       
-      // Check if session exists
       const session = await storage.getChatSession(sessionId);
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
@@ -116,20 +98,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Send a message to Perplexity API
-  app.post("/api/chat/sessions/:sessionId/messages", async (req: any, res) => {
+  app.post("/api/chat/sessions/:sessionId/messages", async (req, res) => {
     try {
       const { sessionId } = req.params;
       const { content } = chatMessageSchema.parse(req.body);
-      const userId = getSessionUserId(req);
-      await ensureUserExists(userId);
 
-      // Check if session exists (simplified validation - no strict user ownership in no-auth mode)
       const session = await storage.getChatSession(sessionId);
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
       }
 
-      console.log(`[CHAT] User ${userId} sending message to session ${sessionId}: "${content.substring(0, 50)}..."`);
+      console.log(`[CHAT] Sending message to session ${sessionId}: "${content.substring(0, 50)}..."`);
 
       // Save user message first
       const userMessage = await storage.createMessage({
@@ -143,7 +122,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get conversation history for context
       const messages = await storage.getMessagesBySessionId(sessionId);
       
-      // Prepare messages for Perplexity API - limit to last 10 messages for better performance
+      // Prepare messages for Perplexity API - limit to last 10 messages
       const recentMessages = messages.slice(-10);
       const perplexityMessages: PerplexityMessage[] = [
         {
@@ -158,14 +137,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!PERPLEXITY_API_KEY) {
         console.error("[CHAT] Perplexity API key not configured");
-        return res.status(500).json({ error: "AI service not configured" });
+        const errorMessage = await storage.createMessage({
+          sessionId,
+          role: "assistant",
+          content: "Sorry, the AI service is not configured. Please set up the PERPLEXITY_API_KEY environment variable.",
+        });
+        return res.json({
+          message: errorMessage.content,
+          sessionId,
+        });
       }
 
       console.log(`[CHAT] Calling Perplexity API with ${perplexityMessages.length} messages`);
 
-      // Call Perplexity API with timeout and better error handling
+      // Call Perplexity API with timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
 
       try {
         const perplexityResponse = await fetch("https://api.perplexity.ai/chat/completions", {
@@ -193,15 +180,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (!perplexityResponse.ok) {
           const errorText = await perplexityResponse.text();
           console.error(`[CHAT] Perplexity API error ${perplexityResponse.status}:`, errorText);
-          return res.status(500).json({ error: "AI service temporarily unavailable" });
+          
+          const errorMessage = await storage.createMessage({
+            sessionId,
+            role: "assistant",
+            content: "Sorry, I'm having trouble accessing my knowledge base right now. Please try again in a moment.",
+          });
+          
+          return res.json({
+            message: errorMessage.content,
+            sessionId,
+          });
         }
 
         const perplexityData: PerplexityResponse = await perplexityResponse.json();
         const aiMessage = perplexityData.choices[0]?.message?.content;
 
         if (!aiMessage) {
-          console.error("[CHAT] Invalid response from Perplexity API - no message content");
-          return res.status(500).json({ error: "Invalid response from AI service" });
+          console.error("[CHAT] Invalid response from Perplexity API");
+          const errorMessage = await storage.createMessage({
+            sessionId,
+            role: "assistant",
+            content: "Sorry, I received an invalid response. Please try again.",
+          });
+          
+          return res.json({
+            message: errorMessage.content,
+            sessionId,
+          });
         }
 
         console.log(`[CHAT] AI response received, length: ${aiMessage.length} characters`);
@@ -223,12 +229,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json(response);
       } catch (fetchError: any) {
         clearTimeout(timeoutId);
+        console.error("[CHAT] Fetch error:", fetchError);
+        
+        let errorContent = "Sorry, I'm having trouble connecting right now. Please try again.";
         if (fetchError.name === 'AbortError') {
-          console.error("[CHAT] Request timeout");
-          return res.status(408).json({ error: "Request timeout - please try again" });
+          errorContent = "The request took too long. Please try again.";
         }
-        console.error("[CHAT] Network error:", fetchError);
-        return res.status(500).json({ error: "Network error - please check your connection" });
+        
+        const errorMessage = await storage.createMessage({
+          sessionId,
+          role: "assistant",
+          content: errorContent,
+        });
+        
+        return res.json({
+          message: errorMessage.content,
+          sessionId,
+        });
       }
 
     } catch (error) {
@@ -238,13 +255,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete a chat session
-  app.delete("/api/chat/sessions/:sessionId", async (req: any, res) => {
+  app.delete("/api/chat/sessions/:sessionId", async (req, res) => {
     try {
       const { sessionId } = req.params;
-      const userId = getSessionUserId(req);
-      await ensureUserExists(userId);
       
-      // Check if session exists
       const session = await storage.getChatSession(sessionId);
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
