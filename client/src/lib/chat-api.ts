@@ -16,7 +16,13 @@ export interface Message {
 }
 
 export interface ChatResponse {
-  message: string;
+  message: {
+    content: string;
+    role: string;
+    id: string;
+    timestamp: string;
+    sessionId: string;
+  };
   sessionId: string;
 }
 
