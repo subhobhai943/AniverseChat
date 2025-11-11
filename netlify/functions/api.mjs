@@ -124,7 +124,7 @@ app.get("/api/chat/sessions/:sessionId/messages", async (req, res) => {
   }
 });
 
-// Send message
+// Send message (FIXED response structure here)
 app.post("/api/chat/sessions/:sessionId/messages", async (req, res) => {
   try {
     const { sessionId } = req.params;
@@ -260,9 +260,16 @@ app.post("/api/chat/sessions/:sessionId/messages", async (req, res) => {
       sessions.set(sessionId, session);
     }
 
+    // FIXED RESPONSE STRUCTURE BELOW
     res.json({
-      message: aiResponse,
-      sessionId: sessionId,
+      message: {
+        content: aiResponse,
+        role: "assistant",
+        id: aiMessage.id,
+        timestamp: aiMessage.timestamp,
+        sessionId: aiMessage.sessionId
+      },
+      sessionId: sessionId
     });
 
   } catch (error) {
